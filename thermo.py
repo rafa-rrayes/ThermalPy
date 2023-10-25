@@ -35,7 +35,7 @@ def gradiente(cell):
     cor = [(1 - multiplicador) * start[i] + multiplicador * finnish[i] for i in range(3)]
     return cor
 def generateGrid(size):
-    coords = [[Cell((i, j), 0, 'ar', 0.01) for i in range(size)] for j in range(size)]
+    coords = [[Cell((i, j), 0, 'ar', 0.001) for i in range(size)] for j in range(size)]
     for row in coords:
         for cell in row:
             cell.coords = coords
@@ -49,15 +49,20 @@ def draw_maze(coords):
             pygame.draw.rect(screen, gradiente(cell), (y * cell_size, x * cell_size, cell_size, cell_size))
             x+=1
         y +=1
-def atualizar(coords):
+def atualizar(coords, coords2):
     for row in coords:
         for cell in row:
             try:
-                cell.update(coords)
+                cell.update(coords, coords2)
             except IndexError:
                 pass
-    return coords
-
+    return coords2
+def calcularEnergia(coords):
+    energia = 0
+    for row in coords:
+        for cell in row:
+            energia += cell.temperatura*cell.capacidadeTermica
+    return energia
 # Cell class
 class Cell:
     def __init__(self, pos , temperatura, tipo, dt):
@@ -68,35 +73,34 @@ class Cell:
         self.coords = None
         self.dt = dt
         self.size = 1
-    def update(self, coords):
+    def update(self, coords, coords2):
+        proprio = coords2[self.pos[1]][self.pos[0]]
+        vizinhoProprio = coords2[self.pos[1]][self.pos[0]+1]
         vizinho = coords[self.pos[1]][self.pos[0]+1]
         k2 = vizinho.tipo['condutividade']
         k1 = self.tipo['condutividade']
         U = 1/(((self.size/2)/k1) + ((self.size/2)/k2))
         Qcond = U*(self.temperatura - vizinho.temperatura)*self.dt
-        self.temperatura -= Qcond/(self.capacidadeTermica)
-        vizinho.temperatura += Qcond/(vizinho.capacidadeTermica)
-        # vizinho 2
+        proprio.temperatura -= Qcond/(self.capacidadeTermica)
+        vizinhoProprio.temperatura += Qcond/(vizinho.capacidadeTermica)
+        #vizinho 2
         vizinho2 = coords[self.pos[1]+1][self.pos[0]]
+        vizinhoProprio2 = coords2[self.pos[1]+1][self.pos[0]]
         k2 = vizinho2.tipo['condutividade']
         U = 1/(((self.size/2)/k1) + ((self.size/2)/k2))
         Qcond = U*(self.temperatura - vizinho2.temperatura)*self.dt
-        self.temperatura -= Qcond/(self.capacidadeTermica)
-        vizinho2.temperatura += Qcond/(vizinho2.capacidadeTermica)
+        proprio.temperatura -= Qcond/(self.capacidadeTermica)
+        vizinhoProprio2.temperatura += Qcond/(vizinho2.capacidadeTermica)
         #Convecção
         if self.tipo['convectividade'] != 0:
             chance = self.tipo['convectividade']*self.temperatura*self.dt
             if random.random() < chance:
-                escolhida = random.choice([[self.pos[0], self.pos[1]-1], [self.pos[0], self.pos[1]+1],[self.pos[0]-1, self.pos[1]], [self.pos[0]+1, self.pos[1]], [self.pos[0]-1, self.pos[1]]])
-                escolhida = coords[escolhida[1]][escolhida[0]]
+                escolhida = random.choice([[self.pos[0], self.pos[1]-1], [self.pos[0], self.pos[1]+1],[self.pos[0]-1, self.pos[1]], [self.pos[0]+1, self.pos[1]], [self.pos[0]-1, self.pos[1]], [self.pos[0]-1, self.pos[1]]])
+                escolhida = coords2[escolhida[1]][escolhida[0]]
                 if escolhida.tipo == self.tipo:
-                    self.temperatura, escolhida.temperatura = escolhida.temperatura+(self.temperatura-escolhida.temperatura)/10, self.temperatura-(self.temperatura-escolhida.temperatura)/10
-            
-
-
-
+                    proprio.temperatura, escolhida.temperatura = escolhida.temperatura+(self.temperatura-escolhida.temperatura)/10, self.temperatura-(self.temperatura-escolhida.temperatura)/10
 size = 100
-coords = generateGrid(size)
+coords, coords2 = generateGrid(size), generateGrid(size)
 cell_size = 8
 
 # Pygame screen, buttons and text setup
@@ -142,35 +146,40 @@ if __name__ == '__main__':
         screen.blit(textoAr, (botaoAr.x+10, botaoAr.y+10))
         pos = pygame.mouse.get_pos()
         temp = coords[pos[0]//cell_size][pos[1]//cell_size].temperatura
-        screen.blit(        textoTemperatura.render(f'Temperatura:{round(temp)}', True, (0, 0, 255)), (0, 0))
+        screen.blit(        textoTemperatura.render(f'Temperatura:{temp}', True, (0, 0, 255)), (0, 0))
         pygame.display.update()
         if pygame.mouse.get_pressed()[0]:
             if pos[1] < size*cell_size - 50 and brush_type != 'analise':
                 for i in range(-4,4):
                     for j in range(-4,4):
                         if brush_type == 'temp':
-                            #if coords[pos[0]//cell_size + i][pos[1]//cell_size + j].temperatura < coords[pos[0]//cell_size + i][pos[1]//cell_size + j].tipo['tempMax']:
                             coords[pos[0]//cell_size + i][pos[1]//cell_size + j].temperatura += 10
+                            coords2[pos[0]//cell_size + i][pos[1]//cell_size + j].temperatura += 10
                         elif brush_type == 'tempMenos':
                             coords[pos[0]//cell_size + i][pos[1]//cell_size + j].temperatura -= 10
+                            coords2[pos[0]//cell_size + i][pos[1]//cell_size + j].temperatura -= 10
                             if coords[pos[0]//cell_size + i][pos[1]//cell_size + j].temperatura < 0:
                                 coords[pos[0]//cell_size + i][pos[1]//cell_size + j].temperatura = 0
+                                coords2[pos[0]//cell_size + i][pos[1]//cell_size + j].temperatura = 0
                         else:
                             coords[pos[0]//cell_size + i][pos[1]//cell_size + j].tipo = TIPOS[brush_type]
+                            coords2[pos[0]//cell_size + i][pos[1]//cell_size + j].tipo = TIPOS[brush_type]
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 Jogando = False
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
-                    coords = atualizar(coords)
+                    coords = atualizar(coords, coords2)
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 pos = pygame.mouse.get_pos()
                 if botaoPlay.collidepoint(pos):
                     play = not play
                 elif botaoClear.collidepoint(pos):
                     coords = generateGrid(size)
+                    coords2 = generateGrid(size)
                 elif botaoFerro.collidepoint(pos):
                     brush_type = 'ferro'
+                    print(calcularEnergia(coords))
                 elif botaoAgua.collidepoint(pos):
                     brush_type = 'agua'
                 elif botaoTemp.collidepoint(pos):
@@ -182,6 +191,6 @@ if __name__ == '__main__':
                     brush_type = 'ar'
         if play:
             pass
-            coords = atualizar(coords)
+            coords = atualizar(coords, coords2)
         draw_maze(coords)
         clock.tick(60)
